@@ -132,6 +132,22 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
+      # `build.py` copies `target/release/service` into RustDesk.app/Contents/MacOS
+      # *after* `flutter build macos` has already ad-hoc signed the bundle, which
+      # breaks the code signature seal. Upstream never notices because its CI
+      # re-signs with a real Developer ID cert afterwards; without a cert the
+      # broken seal plus the hardened-runtime flag makes macOS kill the app on
+      # launch (double-click does nothing at all). Re-seal it ad-hoc, keeping the
+      # entitlements Xcode applied, and drop the hardened runtime, which only
+      # matters for notarization.
+      - name: Re-sign app bundle (ad-hoc)
+        run: |
+          APP=./flutter/build/macos/Build/Products/Release/RustDesk.app
+          codesign -d --entitlements /tmp/entitlements.plist --xml "$APP"
+          codesign --force --sign - "$APP/Contents/MacOS/service"
+          codesign --force --deep --sign - --entitlements /tmp/entitlements.plist "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       - name: Create unsigned dmg
         run: |
           CREATE_DMG="$(command -v create-dmg)"

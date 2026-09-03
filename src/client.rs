@@ -1762,6 +1762,11 @@ pub struct LoginConfigHandler {
     // reconnect before the real reboot disconnect.
     restart_remote_device_at: Option<Instant>,
     pub force_relay: bool,
+    // Whether relay was asked for *this peer* - the saved `force-always-relay`
+    // option, a "/r" id suffix or a reconnect-via-relay - as opposed to being
+    // imposed on every peer by a global transport setting (WebSocket, proxy).
+    // Only the former may be written back to the peer config.
+    pub force_relay_for_peer: bool,
     pub direct: Option<bool>,
     pub received: bool,
     switch_uuid: Option<String>,
@@ -1870,11 +1875,10 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.clear_restarting_remote_device();
-        self.force_relay =
+        self.force_relay_for_peer =
             config::option2bool("force-always-relay", &self.get_option("force-always-relay"))
-                || force_relay
-                || use_ws()
-                || Config::is_proxy();
+                || force_relay;
+        self.force_relay = self.force_relay_for_peer || use_ws() || Config::is_proxy();
         if let Some((real_id, server, key)) = &self.other_server {
             let other_server_key = self.get_option("other-server-key");
             if !other_server_key.is_empty() && key.is_empty() {
@@ -2591,7 +2595,11 @@ impl LoginConfigHandler {
                     .insert("other-server-key".to_owned(), c.clone());
             }
         }
-        if self.force_relay {
+        // Persist only a per-peer request. `self.force_relay` also covers the
+        // global WebSocket/proxy settings, and writing those back would re-tick
+        // "Always connect via relay" for every peer on every connection, leaving
+        // the user unable to ever turn it off.
+        if self.force_relay_for_peer {
             config
                 .options
                 .insert("force-always-relay".to_owned(), "Y".to_owned());

@@ -1294,7 +1294,11 @@ impl<T: InvokeUiSession> Session<T> {
 
         // override only if true
         if true == force_relay {
-            self.lc.write().unwrap().force_relay = true;
+            let mut lc = self.lc.write().unwrap();
+            lc.force_relay = true;
+            // The user asked for relay for this peer specifically, so it is worth
+            // remembering; see `force_relay_for_peer`.
+            lc.force_relay_for_peer = true;
         }
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);

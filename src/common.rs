@@ -2432,6 +2432,25 @@ pub fn is_udp_disabled() -> bool {
     Config::get_option(keys::OPTION_DISABLE_UDP) == "Y"
 }
 
+pub const OPTION_ALLOW_WEBSOCKET_REGISTER: &str = "allow-websocket-register";
+
+/// Whether the rendezvous *registration* channel should go over WebSocket too
+/// when `allow-websocket` is on. Off unless explicitly asked for.
+///
+/// The rendezvous server only refreshes a peer's `last_reg_time` from the UDP
+/// register path, and that timestamp is what it answers `OnlineRequest` with.
+/// Over TCP/WebSocket it replies `NOT_SUPPORT` to `RegisterPk` and never touches
+/// the peer entry, so registering over WebSocket leaves this device looking
+/// permanently offline to everyone else and unreachable for incoming
+/// punch-hole/relay requests: it can control others but can no longer be
+/// controlled. Keeping registration on UDP lets both roles work at once -
+/// WebSocket is still used for everything we initiate, and incoming sessions are
+/// forced through the WebSocket relay by `handle_punch_hole`.
+#[inline]
+pub fn use_ws_for_register() -> bool {
+    use_ws() && Config::get_option(OPTION_ALLOW_WEBSOCKET_REGISTER) == "Y"
+}
+
 // this crate https://github.com/yoshd/stun-client supports nat type
 async fn stun_ipv6_test(stun_server: &str) -> ResultType<(SocketAddr, String)> {
     use std::net::ToSocketAddrs;

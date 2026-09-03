@@ -335,40 +335,64 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       // clipboard
       oldValue = '';
     }
-    if (newValue.length == oldValue.length) {
-      // ?
-    } else if (newValue.length < oldValue.length) {
-      final char = 'VK_BACK';
-      inputModel.inputKey(char);
-    } else {
-      final content = newValue.substring(oldValue.length);
-      if (content.length > 1) {
-        if (oldValue != '' &&
-            content.length == 2 &&
-            (content == '""' ||
-                content == '()' ||
-                content == '[]' ||
-                content == '<>' ||
-                content == "{}" ||
-                content == '”“' ||
-                content == '《》' ||
-                content == '（）' ||
-                content == '【】')) {
-          // can not only input content[0], because when input ], [ are also auo insert, which cause ] never be input
-          bind.sessionInputString(sessionId: sessionId, value: content);
-          _openKeyboardUnlocked();
-          return;
-        }
-        bind.sessionInputString(sessionId: sessionId, value: content);
-      } else {
-        inputChar(content);
-      }
+    // `newValue` is not necessarily `oldValue` plus a suffix: committing an IME
+    // composition replaces the pre-edit text, so diff on the common prefix
+    // instead of slicing at `oldValue.length`, which used to drop a character.
+    final oldRunes = oldValue.runes.toList();
+    final newRunes = newValue.runes.toList();
+    var common = 0;
+    for (;
+        common < oldRunes.length &&
+            common < newRunes.length &&
+            oldRunes[common] == newRunes[common];
+        ++common) {}
+    for (var i = 0; i < oldRunes.length - common; ++i) {
+      inputModel.inputKey('VK_BACK');
     }
+    final content = String.fromCharCodes(newRunes.sublist(common));
+    if (content.isEmpty) {
+      return;
+    }
+    if (content.length > 1) {
+      if (oldValue != '' &&
+          content.length == 2 &&
+          (content == '""' ||
+              content == '()' ||
+              content == '[]' ||
+              content == '<>' ||
+              content == "{}" ||
+              content == '”“' ||
+              content == '《》' ||
+              content == '（）' ||
+              content == '【】')) {
+        // can not only input content[0], because when input ], [ are also auo insert, which cause ] never be input
+        bind.sessionInputString(sessionId: sessionId, value: content);
+        _openKeyboardUnlocked();
+        return;
+      }
+      bind.sessionInputString(sessionId: sessionId, value: content);
+    } else {
+      inputChar(content);
+    }
+  }
+
+  // The text field content also holds the IME pre-edit buffer, e.g. the latin
+  // letters of a pinyin composition. Those are not input yet: sending them types
+  // stray letters on the peer and moves `_value` to text the peer never got, so
+  // the commit is then diffed against the wrong base and loses a character -
+  // typing "拼音" arrived as "p拼". Wait for the commit; `_value` is left at
+  // the last committed text on purpose so that diff stays correct.
+  bool _isImeComposing() {
+    final composing = _textController.value.composing;
+    return composing.isValid && !composing.isCollapsed;
   }
 
   // handle mobile virtual keyboard
   void handleSoftKeyboardInput(String newValue) {
     if (!inputModel.keyboardInputAllowed) {
+      return;
+    }
+    if (_isImeComposing()) {
       return;
     }
     if (isIOS) {

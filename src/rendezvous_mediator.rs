@@ -476,9 +476,13 @@ impl RendezvousMediator {
     pub async fn start(server: ServerPtr, host: String) -> ResultType<()> {
         log::info!("start rendezvous mediator of {}", host);
         //If the investment agent type is http or https, then tcp forwarding is enabled.
+        // `use_ws()` is deliberately not a reason to go TCP here: the rendezvous
+        // server only refreshes `last_reg_time` - what it answers `OnlineRequest`
+        // with - from the UDP register path, so registering over WebSocket makes
+        // this device look offline to everyone else. See `use_ws_for_register`.
         if (cfg!(debug_assertions) && option_env!("TEST_TCP").is_some())
             || Config::is_proxy()
-            || use_ws()
+            || crate::use_ws_for_register()
             || crate::is_udp_disabled()
         {
             Self::start_tcp(server, host).await
